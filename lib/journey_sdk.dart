@@ -39,9 +39,15 @@ class JourneySDK {
   static bool get isInitialized => _bloc != null;
 
   /// Initialize the JourneySDK for this Flutter application
-  static Future<void> init({required JourneyConfig config}) async {
+  static Future<void> init({
+    JourneyConfig? config,
+    String? appId,
+    bool debugLogging = false,
+  }) async {
     if (isInitialized) return;
-    _config = config;
+    final effectiveConfig =
+        config ?? JourneyConfig(appId: appId ?? 'app', debugLogging: debugLogging);
+    _config = effectiveConfig;
 
     // 1. Initialize Hive Persistent Box
     await HiveEventQueue.init();
@@ -54,14 +60,14 @@ class JourneySDK {
     );
 
     // 3. Initialize Session Manager & API Client
-    final sessionManager = SessionManager(config: config);
+    final sessionManager = SessionManager(config: effectiveConfig);
     await sessionManager.initializeSession(deviceId: _deviceId!);
 
-    final apiClient = JourneyApiClient(config: config);
+    final apiClient = JourneyApiClient(config: effectiveConfig);
 
     // 4. Initialize BLoC Worker
     _bloc = JourneyBloc(
-      config: config,
+      config: effectiveConfig,
       sessionManager: sessionManager,
       apiClient: apiClient,
       initialDeviceId: _deviceId!,
@@ -71,14 +77,22 @@ class JourneySDK {
     track(
         'app_launch',
         {
-          'appId': config.appId,
+          'appId': effectiveConfig.appId,
           'isFirstSession': HiveEventQueue.getActiveSession()?.eventsCount == 0,
         },
         'lifecycle');
   }
 
-  /// Alias for init (accepts either positional or named JourneyConfig)
-  static Future<void> initialize(JourneyConfig config) => init(config: config);
+  /// Alias for init (accepts either JourneyConfig or String appId)
+  static Future<void> initialize([dynamic configOrAppId]) async {
+    if (configOrAppId is JourneyConfig) {
+      await init(config: configOrAppId);
+    } else if (configOrAppId is String) {
+      await init(appId: configOrAppId);
+    } else {
+      await init();
+    }
+  }
 
   // ── Core Tracking Methods ──────────────────────────────────────────────────
 

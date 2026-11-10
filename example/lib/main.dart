@@ -4,13 +4,10 @@ import 'package:journey_sdk/journey_sdk.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Initialize JourneySDK
-  await JourneySDK.initialize(
-    const JourneyConfig(
-      appId: 'example_app',
-      baseUrl: 'https://api.yourdomain.com',
-      debugLogging: true,
-    ),
+  // Initialize JourneySDK with unified embedded backend
+  await JourneySDK.init(
+    appId: 'example_app',
+    debugLogging: true,
   );
 
   runApp(const MyApp());

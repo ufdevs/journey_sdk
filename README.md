@@ -34,16 +34,10 @@ import 'package:journey_sdk/journey_sdk.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Initialize JourneySDK once
+  // Initialize JourneySDK with a single line
   await JourneySDK.init(
-    config: const JourneyConfig(
-      appId: 'cvcraft', // Or 'contractly', 'invoice_ai', etc.
-      baseUrl: 'https://api.yourdomain.com',
-      batchSize: 20,
-      flushInterval: Duration(seconds: 30),
-      sessionTimeout: Duration(minutes: 30),
-      debugLogging: true,
-    ),
+    appId: 'cvcraft', // Or 'contractly', 'invoice_ai', etc.
+    debugLogging: true,
   );
 
   runApp(const MyApp());
