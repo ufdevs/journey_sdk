@@ -1,3 +1,5 @@
+import '../core/time_utils.dart';
+
 /// Represents an analytical event inside a user/device session
 class TrackedEvent {
   final String id;
@@ -45,7 +47,8 @@ class TrackedEvent {
     'payload': payload,
     if (contractId != null) 'contractId': contractId,
     if (templateId != null) 'templateId': templateId,
-    'timestamp': timestamp.toIso8601String(),
+    // Always UTC with Z so servers don't mis-parse local India/EU times
+    'timestamp': TimeUtils.toUtcIso8601(timestamp),
     'source': source,
   };
 
@@ -62,7 +65,8 @@ class TrackedEvent {
     payload: Map<String, dynamic>.from(json['payload'] as Map? ?? {}),
     contractId: json['contractId'] as String?,
     templateId: json['templateId'] as String?,
-    timestamp: DateTime.tryParse(json['timestamp'] as String? ?? '') ?? DateTime.now(),
+    timestamp: DateTime.tryParse(json['timestamp'] as String? ?? '')?.toUtc() ??
+        TimeUtils.utcNow(),
     source: json['source'] as String? ?? 'journey_sdk',
   );
 }

@@ -1,6 +1,6 @@
 name: journey_sdk
 description: "High-performance, offline-first session & user journey tracking SDK for Flutter apps with Hive persistence and BLoC."
-version: 1.0.1
+version: 1.1.0
 homepage: https://ufdevs.live
 repository: https://github.com/ufdevs/journey_sdk
 issue_tracker: https://github.com/ufdevs/journey_sdk/issues

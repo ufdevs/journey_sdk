@@ -1,6 +1,6 @@
 import 'dart:convert';
-import 'package:flutter/foundation.dart';
 import 'package:hive_flutter/hive_flutter.dart';
+import '../core/journey_logger.dart';
 import '../models/session_record.dart';
 import '../models/tracked_event.dart';
 
@@ -20,6 +20,9 @@ class HiveEventQueue {
     _eventsBox = await Hive.openBox<String>(_eventsBoxName);
     _sessionBox = await Hive.openBox<String>(_sessionBoxName);
     _metaBox = await Hive.openBox<dynamic>(_metaBoxName);
+    JourneyLogger.i(
+      'Hive ready — pending=${_eventsBox?.length ?? 0} events in queue',
+    );
   }
 
   // ── Device ID & Identity Storage ───────────────────────────────────────────
@@ -55,7 +58,7 @@ class HiveEventQueue {
       final jsonStr = jsonEncode(event.toJson());
       await _eventsBox?.put(event.id, jsonStr);
     } catch (e) {
-      debugPrint('[JourneySDK] Hive enqueue error: $e');
+      JourneyLogger.e('Hive enqueue error', e);
     }
   }
 
@@ -82,7 +85,7 @@ class HiveEventQueue {
     try {
       await _eventsBox!.deleteAll(eventIds);
     } catch (e) {
-      debugPrint('[JourneySDK] Hive delete error: $e');
+      JourneyLogger.e('Hive delete error', e);
     }
   }
 
@@ -105,7 +108,7 @@ class HiveEventQueue {
     try {
       await _sessionBox?.put('current_session', jsonEncode(session.toJson()));
     } catch (e) {
-      debugPrint('[JourneySDK] Hive session save error: $e');
+      JourneyLogger.e('Hive session save error', e);
     }
   }
 

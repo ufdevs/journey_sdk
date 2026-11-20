@@ -5,6 +5,7 @@ import 'src/bloc/journey_bloc.dart';
 import 'src/bloc/journey_event.dart';
 import 'src/config/journey_config.dart';
 import 'src/core/device_identifier.dart';
+import 'src/core/journey_logger.dart';
 import 'src/core/session_manager.dart';
 import 'src/observers/journey_navigator_observer.dart';
 import 'src/storage/hive_event_queue.dart';
@@ -38,16 +39,37 @@ class JourneySDK {
   /// Is the SDK initialized
   static bool get isInitialized => _bloc != null;
 
-  /// Initialize the JourneySDK for this Flutter application
+  /// Initialize the JourneySDK for this Flutter application.
+  ///
+  /// All apps should use the **same** [baseUrl] (default:
+  /// [JourneyConfig.defaultBaseUrl] = `https://pdfgenai.vercel.app`) so
+  /// events land in one Mongo analytics store, separated by [appId].
   static Future<void> init({
     JourneyConfig? config,
     String? appId,
+    String? baseUrl,
     bool debugLogging = false,
   }) async {
-    if (isInitialized) return;
-    final effectiveConfig =
-        config ?? JourneyConfig(appId: appId ?? 'app', debugLogging: debugLogging);
+    if (isInitialized) {
+      JourneyLogger.w('init() called again — ignored (already initialized)');
+      return;
+    }
+    final effectiveConfig = config ??
+        JourneyConfig(
+          appId: appId ?? 'app',
+          baseUrl: baseUrl,
+          debugLogging: debugLogging,
+        );
     _config = effectiveConfig;
+    JourneyLogger.configure(
+      debugLogging: effectiveConfig.debugLogging,
+      appId: effectiveConfig.appId,
+    );
+
+    JourneyLogger.i(
+      'Initializing v${JourneyConfig.sdkVersion} → ${effectiveConfig.baseUrl} '
+      '(appId=${effectiveConfig.appId})',
+    );
 
     // 1. Initialize Hive Persistent Box
     await HiveEventQueue.init();
@@ -58,10 +80,12 @@ class JourneySDK {
       persistedId: savedId,
       onSaveId: (id) => HiveEventQueue.saveDeviceId(id),
     );
+    JourneyLogger.i('deviceId=$_deviceId');
 
     // 3. Initialize Session Manager & API Client
     final sessionManager = SessionManager(config: effectiveConfig);
-    await sessionManager.initializeSession(deviceId: _deviceId!);
+    final session = await sessionManager.initializeSession(deviceId: _deviceId!);
+    JourneyLogger.i('sessionId=${session.sessionId} status=${session.status}');
 
     final apiClient = JourneyApiClient(config: effectiveConfig);
 
@@ -75,12 +99,16 @@ class JourneySDK {
 
     // 5. Track initial app launch event automatically
     track(
-        'app_launch',
-        {
-          'appId': effectiveConfig.appId,
-          'isFirstSession': HiveEventQueue.getActiveSession()?.eventsCount == 0,
-        },
-        'lifecycle');
+      'app_launch',
+      {
+        'appId': effectiveConfig.appId,
+        'sdkVersion': JourneyConfig.sdkVersion,
+        'baseUrl': effectiveConfig.baseUrl,
+        'isFirstSession': session.eventsCount == 0,
+      },
+      'lifecycle',
+    );
+    JourneyLogger.i('Ready — tracking to shared backend');
   }
 
   /// Alias for init (accepts either JourneyConfig or String appId)
@@ -104,7 +132,10 @@ class JourneySDK {
     String? contractId,
     String? templateId,
   ]) {
-    if (!isInitialized) return;
+    if (!isInitialized) {
+      JourneyLogger.w('track("$eventName") ignored — SDK not initialized');
+      return;
+    }
     _bloc!.add(TrackEventRequested(
       eventType: eventType ?? 'custom',
       eventName: eventName,
@@ -233,6 +264,49 @@ class JourneySDK {
     );
   }
 
+  /// Track UI taps / clicks with element identity (reuse across apps)
+  static void trackTap({
+    required String element,
+    String? elementType,
+    String? targetId,
+    String? source,
+    Map<String, dynamic>? extra,
+  }) {
+    track(
+      'ui_tap',
+      {
+        'element': element,
+        if (elementType != null) 'elementType': elementType,
+        if (targetId != null) 'targetId': targetId,
+        if (source != null) 'source': source,
+        ...(extra ?? {}),
+      },
+      'interaction',
+    );
+  }
+
+  /// Track handled errors / crashes for product quality signals
+  static void trackError({
+    required String error,
+    String? where,
+    String? stackTrace,
+    Map<String, dynamic>? extra,
+  }) {
+    track(
+      'app_error',
+      {
+        'error': error,
+        if (where != null) 'where': where,
+        if (stackTrace != null)
+          'stackTrace': stackTrace.length > 1500
+              ? stackTrace.substring(0, 1500)
+              : stackTrace,
+        ...(extra ?? {}),
+      },
+      'error',
+    );
+  }
+
   /// Track in-app purchases and subscriptions
   static void trackPurchase({
     required String planId,
@@ -255,6 +329,31 @@ class JourneySDK {
       'monetization',
     );
   }
+
+  /// Track notification open / receive / dismiss (FCM etc.)
+  static void trackNotification({
+    required String action, // received | opened | dismissed | tapped
+    String? notificationId,
+    String? title,
+    String? campaign,
+    Map<String, dynamic>? extra,
+  }) {
+    track(
+      'notification_$action',
+      {
+        'action': action,
+        if (notificationId != null) 'notificationId': notificationId,
+        if (title != null) 'title': title,
+        if (campaign != null) 'campaign': campaign,
+        ...(extra ?? {}),
+      },
+      'notification',
+    );
+  }
+
+  /// Pending events still waiting to flush (debug / health checks)
+  static int get pendingEventsCount =>
+      isInitialized ? HiveEventQueue.pendingEventsCount : 0;
 
   // ── User Identity ─────────────────────────────────────────────────────────
 

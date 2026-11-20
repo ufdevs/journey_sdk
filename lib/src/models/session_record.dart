@@ -1,3 +1,5 @@
+import '../core/time_utils.dart';
+
 /// Represents a user or device app session lifecycle
 class SessionRecord {
   final String sessionId;
@@ -40,9 +42,9 @@ class SessionRecord {
     'deviceId': deviceId,
     if (userId != null) 'userId': userId,
     if (userEmail != null) 'userEmail': userEmail,
-    'startedAt': startedAt.toIso8601String(),
-    'lastActiveAt': lastActiveAt.toIso8601String(),
-    if (endedAt != null) 'endedAt': endedAt!.toIso8601String(),
+    'startedAt': TimeUtils.toUtcIso8601(startedAt),
+    'lastActiveAt': TimeUtils.toUtcIso8601(lastActiveAt),
+    if (endedAt != null) 'endedAt': TimeUtils.toUtcIso8601(endedAt!),
     'durationSeconds': durationSeconds,
     'eventsCount': eventsCount,
     if (entryScreen != null) 'entryScreen': entryScreen,
@@ -58,9 +60,13 @@ class SessionRecord {
     deviceId: json['deviceId'] as String,
     userId: json['userId'] as String?,
     userEmail: json['userEmail'] as String?,
-    startedAt: DateTime.tryParse(json['startedAt'] as String? ?? '') ?? DateTime.now(),
-    lastActiveAt: DateTime.tryParse(json['lastActiveAt'] as String? ?? '') ?? DateTime.now(),
-    endedAt: json['endedAt'] != null ? DateTime.tryParse(json['endedAt'] as String) : null,
+    startedAt:
+        DateTime.tryParse(json['startedAt'] as String? ?? '')?.toUtc() ?? TimeUtils.utcNow(),
+    lastActiveAt:
+        DateTime.tryParse(json['lastActiveAt'] as String? ?? '')?.toUtc() ?? TimeUtils.utcNow(),
+    endedAt: json['endedAt'] != null
+        ? DateTime.tryParse(json['endedAt'] as String)?.toUtc()
+        : null,
     durationSeconds: json['durationSeconds'] as int? ?? 0,
     eventsCount: json['eventsCount'] as int? ?? 0,
     entryScreen: json['entryScreen'] as String?,

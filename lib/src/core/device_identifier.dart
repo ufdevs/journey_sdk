@@ -3,6 +3,7 @@ import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/foundation.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:uuid/uuid.dart';
+import 'time_utils.dart';
 
 /// Resolves a 100% persistent device identifier and device hardware metadata
 class DeviceIdentifier {
@@ -113,6 +114,10 @@ class DeviceIdentifier {
       }
     } catch (_) {}
 
+    final views = PlatformDispatcher.instance.views;
+    final size = views.isNotEmpty ? views.first.physicalSize : null;
+    final dpr = views.isNotEmpty ? views.first.devicePixelRatio : 1.0;
+
     _cachedDeviceInfo = {
       'os': os,
       'osVersion': osVersion,
@@ -121,8 +126,18 @@ class DeviceIdentifier {
       'appVersion': appVersion,
       'buildNumber': buildNumber,
       'platform': kIsWeb ? 'web' : Platform.operatingSystem,
+      // Timezone / locale — critical for international apps (e.g. India IST = +330)
+      ...TimeUtils.timezoneContext(),
+      if (size != null) 'screenWidth': (size.width / dpr).round(),
+      if (size != null) 'screenHeight': (size.height / dpr).round(),
+      'devicePixelRatio': dpr,
     };
 
     return _cachedDeviceInfo!;
+  }
+
+  /// Clear cached device info (e.g. after locale/timezone change).
+  static void clearDeviceInfoCache() {
+    _cachedDeviceInfo = null;
   }
 }

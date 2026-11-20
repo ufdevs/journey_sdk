@@ -1,16 +1,25 @@
+## 1.1.0
+
+* Structured logging via `JourneyLogger` (`[JourneySDK:appId][EVENT|FLUSH|ERROR]`).
+* API client retries (configurable `maxRetries`), richer headers (`x-sdk-version`, `x-app-id`, timezone).
+* Batch payload includes `sdk` metadata (version, timezone, locale).
+* `JourneySDK.init` accepts `baseUrl` directly; documents shared backend `https://pdfgenai.vercel.app`.
+* App ID normalization (`photogpt` aliases, lowercase slug).
+* New `trackNotification(...)` helper; `pendingEventsCount` getter.
+* Warn when `track` is called before `init`.
+* Added **INTEGRATION.md** multi-app setup guide.
+
+## 1.0.2
+
+* **Timezone fix:** timestamps serialized as UTC ISO-8601 with `Z`.
+* Session `deviceInfo` includes timezone/locale/screen size.
+* Lifecycle touch+flush (no premature session kill); `trackTap` / `trackError`.
+* Navigator unnamed-route fallback + `navigation_back`.
+
 ## 1.0.1
 
-* Upgraded dependency constraints to support the latest stable releases (`flutter_bloc ^9.x`, `connectivity_plus ^7.x`, `package_info_plus ^10.x`).
-* Built-in obfuscated default endpoint for zero-friction single-line initialization via `JourneySDK.init(appId: '...')`.
-* Added optional named parameters to `JourneySDK.init` and overloaded `JourneySDK.initialize`.
+* Dependency constraint upgrades; obfuscated default endpoint; flexible `init`.
 
 ## 1.0.0
 
-* Initial stable release of JourneySDK by UFDevs.
-* High-performance, offline-first session & user journey tracking for Flutter.
-* Hive persistence queue for guaranteed delivery across network disruptions.
-* Automated device fingerprinting and persistent anonymous identity.
-* Auto-session rotation with configurable timeouts and lifecycle detection.
-* BLoC architecture for state management and async event streaming.
-* Built-in `JourneyNavigatorObserver` for automatic screen tracking and dwell times.
-* Dedicated methods for AI prompts, completions, search, user inputs, and AdMob tracking (`trackAd`).
+* Initial stable release.

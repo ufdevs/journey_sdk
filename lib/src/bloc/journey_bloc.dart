@@ -3,7 +3,9 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:uuid/uuid.dart';
 import '../api/journey_api_client.dart';
 import '../config/journey_config.dart';
+import '../core/journey_logger.dart';
 import '../core/session_manager.dart';
+import '../core/time_utils.dart';
 import '../models/tracked_event.dart';
 import '../storage/hive_event_queue.dart';
 import 'journey_event.dart';
@@ -47,6 +49,12 @@ class JourneyBloc extends Bloc<JourneyEvent, JourneyState> {
       );
 
       final seqNo = sessionManager.nextSequenceNumber();
+      final enrichedPayload = <String, dynamic>{
+        ...event.payload,
+        if (state.activeScreen != null) 'screen': state.activeScreen,
+        'timezoneOffsetMinutes': TimeUtils.timezoneOffsetMinutes(),
+        'timezone': TimeUtils.timezoneLabel(),
+      };
       final trackedEvent = TrackedEvent(
         id: const Uuid().v4(),
         appId: config.appId,
@@ -57,13 +65,20 @@ class JourneyBloc extends Bloc<JourneyEvent, JourneyState> {
         userEmail: session.userEmail,
         eventType: event.eventType,
         eventName: event.eventName,
-        payload: event.payload,
+        payload: enrichedPayload,
         contractId: event.contractId,
         templateId: event.templateId,
-        timestamp: event.timestamp ?? DateTime.now(),
+        timestamp: (event.timestamp ?? TimeUtils.utcNow()).toUtc(),
       );
 
       await HiveEventQueue.enqueueEvent(trackedEvent);
+      JourneyLogger.event(
+        eventType: trackedEvent.eventType,
+        eventName: trackedEvent.eventName,
+        sessionId: trackedEvent.sessionId,
+        seqNo: trackedEvent.seqNo,
+        payload: enrichedPayload,
+      );
 
       final pendingCount = HiveEventQueue.pendingEventsCount;
       emit(state.copyWith(
@@ -76,6 +91,7 @@ class JourneyBloc extends Bloc<JourneyEvent, JourneyState> {
         add(FlushQueueRequested(isForced: true));
       }
     } catch (e) {
+      JourneyLogger.e('Failed to enqueue event ${event.eventName}', e);
       emit(state.copyWith(lastError: e.toString()));
     }
   }
@@ -105,13 +121,23 @@ class JourneyBloc extends Bloc<JourneyEvent, JourneyState> {
         eventName: event.screenName,
         payload: {
           'screenName': event.screenName,
+          'screen': event.screenName,
           if (event.previousScreenName != null) 'previousScreen': event.previousScreenName,
+          'timezoneOffsetMinutes': TimeUtils.timezoneOffsetMinutes(),
+          'timezone': TimeUtils.timezoneLabel(),
           ...event.metadata,
         },
-        timestamp: DateTime.now(),
+        timestamp: TimeUtils.utcNow(),
       );
 
       await HiveEventQueue.enqueueEvent(trackedEvent);
+      JourneyLogger.event(
+        eventType: 'screen_view',
+        eventName: event.screenName,
+        sessionId: trackedEvent.sessionId,
+        seqNo: trackedEvent.seqNo,
+        payload: trackedEvent.payload,
+      );
 
       emit(state.copyWith(
         activeScreen: event.screenName,
@@ -119,6 +145,7 @@ class JourneyBloc extends Bloc<JourneyEvent, JourneyState> {
         pendingEventsCount: HiveEventQueue.pendingEventsCount,
       ));
     } catch (e) {
+      JourneyLogger.e('Failed to track screen ${event.screenName}', e);
       emit(state.copyWith(lastError: e.toString()));
     }
   }
@@ -196,13 +223,25 @@ class JourneyBloc extends Bloc<JourneyEvent, JourneyState> {
   }
 
   Future<void> _onAppLifecycleChanged(AppLifecycleChanged event, Emitter<JourneyState> emit) async {
-    if (event.lifecycleState == 'paused' || event.lifecycleState == 'inactive') {
-      // App moving to background -> update session duration and flush queue immediately
-      await sessionManager.endSession();
+    if (event.lifecycleState == 'paused') {
+      // Background: touch + flush. Do not complete session (timeout owns rotation).
+      await sessionManager.touchSession();
+      add(TrackEventRequested(
+        eventType: 'lifecycle',
+        eventName: 'app_background',
+        payload: {},
+      ));
       add(FlushQueueRequested(isForced: true));
     } else if (event.lifecycleState == 'resumed') {
-      // App coming back -> check if timeout exceeded, start new session if needed
       await sessionManager.ensureActiveSession(deviceId: state.deviceId);
+      add(TrackEventRequested(
+        eventType: 'lifecycle',
+        eventName: 'app_foreground',
+        payload: {},
+      ));
+    } else if (event.lifecycleState == 'detached') {
+      await sessionManager.endSession();
+      add(FlushQueueRequested(isForced: true));
     }
   }
 

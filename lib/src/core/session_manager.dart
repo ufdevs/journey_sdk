@@ -3,6 +3,7 @@ import '../config/journey_config.dart';
 import '../models/session_record.dart';
 import '../storage/hive_event_queue.dart';
 import 'device_identifier.dart';
+import 'time_utils.dart';
 
 /// Manages session lifecycle, rotation on timeouts, and sequential event numbering
 class SessionManager {
@@ -15,10 +16,11 @@ class SessionManager {
   /// Initialize or resume session
   Future<SessionRecord> initializeSession({required String deviceId}) async {
     final persisted = HiveEventQueue.getActiveSession();
-    final now = DateTime.now();
+    final now = TimeUtils.utcNow();
 
     if (persisted != null) {
-      final inactivity = now.difference(persisted.lastActiveAt);
+      final lastActive = persisted.lastActiveAt.toUtc();
+      final inactivity = now.difference(lastActive);
       if (inactivity < config.sessionTimeout && persisted.status == 'active') {
         // Resume existing active session
         persisted.lastActiveAt = now;
@@ -40,7 +42,7 @@ class SessionManager {
 
   /// Start a brand new session
   Future<SessionRecord> startNewSession({required String deviceId, String? entryScreen}) async {
-    final now = DateTime.now();
+    final now = TimeUtils.utcNow();
     final deviceInfo = await DeviceIdentifier.collectDeviceInfo();
     final userId = HiveEventQueue.getSavedUserId();
     final userEmail = HiveEventQueue.getSavedUserEmail();
@@ -69,12 +71,17 @@ class SessionManager {
 
   /// Check if session has expired and rotate if needed
   Future<SessionRecord> ensureActiveSession({required String deviceId, String? currentScreen}) async {
-    final now = DateTime.now();
+    final now = TimeUtils.utcNow();
     if (_currentSession == null) {
       return await initializeSession(deviceId: deviceId);
     }
 
-    final inactivity = now.difference(_currentSession!.lastActiveAt);
+    // Completed/timed_out sessions must not be reused
+    if (_currentSession!.status != 'active') {
+      return await startNewSession(deviceId: deviceId, entryScreen: currentScreen);
+    }
+
+    final inactivity = now.difference(_currentSession!.lastActiveAt.toUtc());
     if (inactivity >= config.sessionTimeout) {
       // Inactivity timeout -> end current session and start fresh
       _currentSession!.endedAt = _currentSession!.lastActiveAt;
@@ -86,7 +93,8 @@ class SessionManager {
 
     // Update active timestamp and duration
     _currentSession!.lastActiveAt = now;
-    _currentSession!.durationSeconds = now.difference(_currentSession!.startedAt).inSeconds;
+    _currentSession!.durationSeconds =
+        now.difference(_currentSession!.startedAt.toUtc()).inSeconds;
     if (currentScreen != null) {
       _currentSession!.exitScreen = currentScreen;
     }
@@ -117,13 +125,25 @@ class SessionManager {
     }
   }
 
-  /// Mark session as backgrounded / ended
+  /// Touch session while backgrounding (do NOT complete — timeout owns rotation).
+  Future<void> touchSession() async {
+    if (_currentSession != null && _currentSession!.status == 'active') {
+      final now = TimeUtils.utcNow();
+      _currentSession!.lastActiveAt = now;
+      _currentSession!.durationSeconds =
+          now.difference(_currentSession!.startedAt.toUtc()).inSeconds;
+      await HiveEventQueue.saveActiveSession(_currentSession!);
+    }
+  }
+
+  /// Mark session as completed (app detach / explicit end).
   Future<void> endSession() async {
     if (_currentSession != null && _currentSession!.status == 'active') {
-      final now = DateTime.now();
+      final now = TimeUtils.utcNow();
       _currentSession!.endedAt = now;
       _currentSession!.lastActiveAt = now;
-      _currentSession!.durationSeconds = now.difference(_currentSession!.startedAt).inSeconds;
+      _currentSession!.durationSeconds =
+          now.difference(_currentSession!.startedAt.toUtc()).inSeconds;
       _currentSession!.status = 'completed';
       await HiveEventQueue.saveActiveSession(_currentSession!);
     }
